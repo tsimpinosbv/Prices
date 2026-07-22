@@ -1,41 +1,63 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Υπολογισμός Επάθλων — Main Draw & Finals</title>
+<meta name="description" content="Υπολογισμός επάθλων για κύριο ταμπλό 8 ή 12 ομάδων και finals." />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+<div class="mx-auto max-w-4xl px-6 py-10">
+  <header class="mb-8">
+    <h1 class="text-3xl font-bold tracking-tight">Υπολογισμός Επάθλων</h1>
+    <p class="mt-2 text-sm text-slate-500">Κύριο ταμπλό (8 ή 12 ομάδες) ή Finals.</p>
+  </header>
 
-export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Υπολογισμός Επάθλων — Main Draw & Finals" },
-      {
-        name: "description",
-        content:
-          "Υπολογισμός επάθλων για κύριο ταμπλό 8 ή 12 ομάδων και finals.",
-      },
-      { property: "og:title", content: "Υπολογισμός Επάθλων" },
-      {
-        property: "og:description",
-        content:
-          "Υπολογισμός επάθλων για κύριο ταμπλό 8 ή 12 ομάδων και finals.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
-  }),
-  component: Index,
-});
+  <section class="grid gap-4 rounded-lg border border-slate-200 bg-white p-6 sm:grid-cols-2">
+    <div>
+      <label class="block text-sm font-medium">Format</label>
+      <div id="fmtGroup" class="mt-2 inline-flex flex-wrap gap-1 rounded-md border border-slate-200 p-1"></div>
+    </div>
+    <div>
+      <label class="block text-sm font-medium">Συνολικό Έπαθλο (€)</label>
+      <input id="prize" type="number" value="2500" min="0" step="50"
+        class="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" />
+    </div>
+  </section>
 
-const FORMAT_LABEL: Record<string, string> = {
-  "8": "8 ομάδες",
-  "12": "12 ομάδες",
-  finals: "Finals",
-};
+  <section class="mt-6 rounded-lg border border-slate-200 bg-white p-6">
+    <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Ποσοστά ανά θέση</h2>
+    <div id="groups" class="space-y-2"></div>
+    <div id="totalPct" class="mt-4 text-sm text-slate-500"></div>
+  </section>
 
-type PrizeGroup = {
-  label: string;
-  positions: number;
-  percent: number;
-};
+  <section class="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-100 text-slate-500">
+        <tr>
+          <th class="px-4 py-2 text-left">Θέση</th>
+          <th class="px-4 py-2 text-right">Ομάδα</th>
+          <th class="px-4 py-2 text-right">Αθλητής</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </section>
 
-const DEFAULTS: Record<string, PrizeGroup[]> = {
+  <div class="mt-6 flex justify-end"> 
+    <button id="download" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+      Κατέβασμα JSON
+    </button> 
+  </div> 
+</div>
+
+<script>
+const FORMAT_LABEL = { "8": "8 ομάδες", "12": "12 ομάδες", "finals": "Finals" };
+const DEFAULTS = {
   "8": [
     { label: "1", positions: 1, percent: 30 },
     { label: "2", positions: 1, percent: 20 },
@@ -49,7 +71,7 @@ const DEFAULTS: Record<string, PrizeGroup[]> = {
     { label: "3-4", positions: 2, percent: 12 },
     { label: "5-8", positions: 4, percent: 6.5 },
   ],
-  finals: [
+  "finals": [
     { label: "1", positions: 1, percent: 30 },
     { label: "2", positions: 1, percent: 20 },
     { label: "3", positions: 1, percent: 14 },
@@ -59,193 +81,89 @@ const DEFAULTS: Record<string, PrizeGroup[]> = {
   ],
 };
 
-function formatMoney(n: number) {
-  return new Intl.NumberFormat("el-GR", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 2,
-  }).format(n);
+let state = { format: "8", prize: 2500, groups: JSON.parse(JSON.stringify(DEFAULTS)) };
+const fmt = n => new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n);
+
+function renderFmt() {
+  const g = document.getElementById("fmtGroup");
+  g.innerHTML = "";
+  Object.keys(FORMAT_LABEL).forEach(k => {
+    const b = document.createElement("button");
+    const on = k === state.format;
+    b.className = "px-4 py-1.5 text-sm font-medium rounded " + (on ? "bg-slate-900 text-white" : "text-slate-500");
+    b.textContent = FORMAT_LABEL[k];
+    b.addEventListener("click", () => { state.format = k; render(); });
+    g.appendChild(b);
+  });
 }
 
-function Index() {
-  const [format, setFormat] = useState<string>("8");
-  const [prize, setPrize] = useState<number>(2500);
-  const [groups, setGroups] = useState<Record<string, PrizeGroup[]>>(
-    JSON.parse(JSON.stringify(DEFAULTS)),
-  );
-
-  const active = groups[format];
-
-  const totalPct = useMemo(
-    () => active.reduce((sum, g) => sum + g.percent * g.positions, 0),
-    [active],
-  );
-
-  const rows = useMemo(() => {
-    let idx = 1;
-    const result: {
-      pos: string;
-      team: number;
-      athlete: number;
-    }[] = [];
-    for (const g of active) {
-      for (let i = 0; i < g.positions; i++) {
-        const team = (prize * g.percent) / 100;
-        result.push({
-          pos:
-            g.positions === 1
-              ? String(idx)
-              : i === 0
-                ? g.label
-                : "",
-          team,
-          athlete: team / 2,
-        });
-        idx++;
-      }
+function render() {
+  renderFmt();
+  const active = state.groups[state.format];
+  const gEl = document.getElementById("groups");
+  gEl.innerHTML = "";
+  active.forEach((g, i) => {
+    const row = document.createElement("div");
+    row.className = "flex items-center gap-3";
+    row.innerHTML = `
+      <span class="w-16 text-sm font-medium">${g.label}</span>
+      <span class="w-24 text-xs text-slate-500">${g.positions} θέση(εις)</span>
+      <input type="number" step="0.01" value="${g.percent}" class="w-28 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm" />
+      <span class="text-sm text-slate-500">% ανά θέση</span>
+      <span class="ml-auto text-sm">${fmt((state.prize * g.percent) / 100)}</span>`;
+    row.querySelector("input").addEventListener("input", e => {
+      active[i].percent = Number(e.target.value) || 0;
+      render();
+    });
+    gEl.appendChild(row);
+  });
+  const totalPct = active.reduce((s, g) => s + g.percent * g.positions, 0);
+  const tp = document.getElementById("totalPct");
+  tp.textContent = `Σύνολο ποσοστών: ${totalPct.toFixed(2)}%`;
+  tp.className = "mt-4 text-sm " + (Math.abs(totalPct - 100) < 0.01 ? "text-slate-500" : "text-red-600");
+  const tbody = document.getElementById("tbody");
+  tbody.innerHTML = "";
+  let idx = 1, teamTotal = 0, athleteTotal = 0;
+  for (const g of active) {
+    for (let i = 0; i < g.positions; i++) {
+      const team = (state.prize * g.percent) / 100;
+      const athlete = team / 2;
+      teamTotal += team; athleteTotal += athlete;
+      const pos = g.positions === 1 ? String(idx) : i === 0 ? g.label : "";
+      const tr = document.createElement("tr");
+      tr.className = "border-t border-slate-200";
+      tr.innerHTML = `<td class="px-4 py-2">${pos}</td><td class="px-4 py-2 text-right">${fmt(team)}</td><td class="px-4 py-2 text-right">${fmt(athlete)}</td>`;
+      tbody.appendChild(tr);
+      idx++;
     }
-    return result;
-  }, [active, prize]);
-
-  const { teamTotal, athleteTotal } = useMemo(
-    () => ({
-      teamTotal: rows.reduce((sum, r) => sum + r.team, 0),
-      athleteTotal: rows.reduce((sum, r) => sum + r.athlete, 0),
-    }),
-    [rows],
-  );
-
-  function updatePercent(index: number, value: string) {
-    const next = { ...groups, [format]: [...groups[format]] };
-    next[format][index] = {
-      ...next[format][index],
-      percent: Number(value) || 0,
-    };
-    setGroups(next);
   }
-
-  return (
-    <div className="mx-auto max-w-4xl px-6 py-10">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">
-          Υπολογισμός Επάθλων
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Κύριο ταμπλό (8 ή 12 ομάδες) ή Finals.
-        </p>
-      </header>
-
-      <section className="grid gap-4 rounded-lg border border-border bg-card p-6 sm:grid-cols-2">
-        <div>
-          <label className="block text-sm font-medium text-foreground">
-            Format
-          </label>
-          <div className="mt-2 inline-flex flex-wrap gap-1 rounded-md border border-border p-1">
-            {Object.keys(FORMAT_LABEL).map((k) => {
-              const on = k === format;
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setFormat(k)}
-                  className={`rounded px-4 py-1.5 text-sm font-medium transition-colors ${
-                    on
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {FORMAT_LABEL[k]}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-foreground">
-            Συνολικό Έπαθλο (€)
-          </label>
-          <input
-            type="number"
-            min={0}
-            step={50}
-            value={prize}
-            onChange={(e) => setPrize(Number(e.target.value) || 0)}
-            className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
-      </section>
-
-      <section className="mt-6 rounded-lg border border-border bg-card p-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Ποσοστά ανά θέση
-        </h2>
-        <div className="space-y-2">
-          {active.map((g, i) => (
-            <div key={g.label} className="flex items-center gap-3">
-              <span className="w-16 text-sm font-medium text-foreground">
-                {g.label}
-              </span>
-              <span className="w-24 text-xs text-muted-foreground">
-                {g.positions} θέση(εις)
-              </span>
-              <input
-                type="number"
-                step="0.01"
-                value={g.percent}
-                onChange={(e) => updatePercent(i, e.target.value)}
-                className="w-28 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <span className="text-sm text-muted-foreground">% ανά θέση</span>
-              <span className="ml-auto text-sm text-foreground">
-                {formatMoney((prize * g.percent) / 100)}
-              </span>
-            </div>
-          ))}
-        </div>
-        <div
-          className={`mt-4 text-sm ${
-            Math.abs(totalPct - 100) < 0.01
-              ? "text-muted-foreground"
-              : "text-destructive"
-          }`}
-        >
-          Σύνολο ποσοστών: {totalPct.toFixed(2)}%
-        </div>
-      </section>
-
-      <section className="mt-6 overflow-hidden rounded-lg border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted text-muted-foreground">
-            <tr>
-              <th className="px-4 py-2 text-left">Θέση</th>
-              <th className="px-4 py-2 text-right">Ομάδα</th>
-              <th className="px-4 py-2 text-right">Αθλητής</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className="border-t border-border">
-                <td className="px-4 py-2 text-foreground">{row.pos}</td>
-                <td className="px-4 py-2 text-right text-foreground">
-                  {formatMoney(row.team)}
-                </td>
-                <td className="px-4 py-2 text-right text-foreground">
-                  {formatMoney(row.athlete)}
-                </td>
-              </tr>
-            ))}
-            <tr className="border-t border-border bg-muted font-semibold">
-              <td className="px-4 py-2 text-foreground">Σύνολο</td>
-              <td className="px-4 py-2 text-right text-foreground">
-                {formatMoney(teamTotal)}
-              </td>
-              <td className="px-4 py-2 text-right text-foreground">
-                {formatMoney(athleteTotal)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-    </div>
-  );
+  const tot = document.createElement("tr");
+  tot.className = "border-t border-slate-200 bg-slate-100 font-semibold";
+  tot.innerHTML = `<td class="px-4 py-2">Σύνολο</td><td class="px-4 py-2 text-right">${fmt(teamTotal)}</td><td class="px-4 py-2 text-right">${fmt(athleteTotal)}</td>`;
+  tbody.appendChild(tot);
 }
+
+document.getElementById("prize").addEventListener("input", e => {
+  state.prize = Number(e.target.value) || 0; render();
+});
+document.getElementById("download").addEventListener("click", () => {
+  const active = state.groups[state.format];
+  const rows = [];
+  let idx = 1;
+  for (const g of active) for (let i = 0; i < g.positions; i++) {
+    const team = (state.prize * g.percent) / 100;
+    rows.push({ pos: g.positions === 1 ? String(idx) : g.label + (i ? ` (#${i+1})` : ""), team, athlete: team / 2 });
+    idx++;
+  }
+  const payload = { format: state.format, totalPrize: state.prize, groups: active, breakdown: rows, generatedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `epathla-${state.format}-${state.prize}eur.json`; a.click();
+  URL.revokeObjectURL(url);
+});
+
+render();
+</script>
+</body>
+</html>
